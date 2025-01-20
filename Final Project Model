@@ -1,0 +1,60 @@
+import pandas as pd
+import statsmodels.api as stats
+
+def biStepwise(X, y, significanceLevel=0.001):
+    selectedFeatures = []
+    initialFeatures = X.columns.tolist()
+    X = stats.add_constant(X)
+    while True:
+        bestPValue = float('inf')
+        bestFeature = None
+        for feature in initialFeatures:
+            model = stats.OLS(y, stats.add_constant(X[selectedFeatures + [feature]]))
+            result = model.fit()
+            pValue = result.pvalues[feature]
+            if pValue < bestPValue and pValue < significanceLevel:
+                bestPValue = pValue
+                bestFeature = feature
+        if bestFeature is not None:
+            selectedFeatures.append(bestFeature)
+            initialFeatures.remove(bestFeature)
+        else:
+            break
+        while True:
+            model = stats.OLS(y, stats.add_constant(X[selectedFeatures])).fit()
+            pValues = model.pvalues[1:]
+            featureToRemove = None
+            for feature in selectedFeatures:
+                if pValues[feature] > significanceLevel:
+                    featureToRemove = feature
+                    break
+            if featureToRemove is not None:
+                selectedFeatures.remove(featureToRemove)
+            else:
+                break 
+    finalModel = stats.OLS(y, stats.add_constant(X[selectedFeatures])).fit()
+    return finalModel, selectedFeatures
+
+def loadData():
+    df = pd.read_csv("bidirectional.csv")
+    dfCleaned = df.replace({',': '', '%': ''}, regex=True)
+    dfCleaned = dfCleaned.apply(pd.to_numeric, errors='coerce')
+    df = dfCleaned
+    selectedColumns = ['Population with less than 9th grade education', 'Population with 9th to 12th grade education, no diploma', 'High School graduate and equivalent']
+    df['High School or Below'] = df[selectedColumns].sum(axis=1)
+    df = df.drop(columns=selectedColumns)
+    selectedColumns = ['Some College,No Degree', 'Associates Degree', 'Bachelors Degree', 'Graduate or professional degree']
+    df['College or above'] = df[selectedColumns].sum(axis=1)
+    df = df.drop(columns=selectedColumns)
+    selectedColumns = ['Hispanic or Latino percentage', 'NH-Black percentage', 'NH-American Indian and Alaska Native percentage', 'NH-Asian percentage', 'NH-Native Hawaiian and Other Pacific Islander percentage', 'NH-Some Other Race percentage']
+    df['Non-White'] = df[selectedColumns].sum(axis=1)
+    df = df.drop(columns=selectedColumns)
+    df = df.drop(columns='Mean income (dollars)')
+    y = df['2020 Republican vote %']
+    X = df.drop(columns=['2020 Republican vote %'])
+    
+    return X, y
+
+X, y = loadData()
+model, selectedFeatures = biStepwise(X, y)
+print(model.summary())
